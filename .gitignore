@@ -1,0 +1,7 @@
+# macOS
+.DS_Store
+
+# 業務情報を含むファイルを誤ってGitHubに上げないため
+work-memo-backup-*.json
+memo-export-*.txt
+*.backup.json

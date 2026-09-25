@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!--
+    通信の制限（Content Security Policy）:
+    connect-src 'none' により、このページからの fetch / XHR / WebSocket などの通信はブラウザが遮断します。
+    スクリプト・スタイル・画像は同じ公開元（self）のファイルだけを読み込みます。
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'; manifest-src 'self'; worker-src 'self'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#1f5f66">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="業務メモ">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/style.css">
+  <title>業務メモ</title>
+  <script src="js/db.js" defer></script>
+  <script src="js/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <!-- ① メモする -->
+    <section id="view-write" class="view" aria-label="メモする">
+      <div class="write-head">
+        <span id="write-info" class="muted"></span>
+        <span id="save-status" class="status" role="status" aria-live="polite"></span>
+      </div>
+      <textarea id="memo-input" class="memo-input" placeholder="覚えたことを、そのまま書く" aria-label="メモ本文" autocomplete="off" spellcheck="false"></textarea>
+      <button id="btn-save" class="btn primary big" type="button">保存</button>
+    </section>
+
+    <!-- ② メモ一覧 -->
+    <section id="view-list" class="view" aria-label="メモ一覧" hidden>
+      <div class="list-head">
+        <h1>メモ一覧 <span id="memo-count" class="muted small"></span></h1>
+        <button id="btn-open-backup" class="btn small" type="button">バックアップ</button>
+      </div>
+      <div class="sel-bar">
+        <span id="sel-count" class="muted">選択なし</span>
+        <button id="btn-select-all" class="btn small" type="button">すべて選択</button>
+        <button id="btn-clear-sel" class="btn small" type="button">選択解除</button>
+      </div>
+      <ul id="memo-list" class="memo-list"></ul>
+      <p id="memo-empty" class="empty" hidden>まだメモがありません。<br>「メモする」から書いてみましょう。</p>
+      <div id="export-bar" class="export-bar" hidden>
+        <button id="btn-export" class="btn primary big" type="button">選択したメモを書き出す</button>
+      </div>
+    </section>
+
+    <!-- ③ 整理済み -->
+    <section id="view-notes" class="view" aria-label="整理済みノート" hidden>
+      <div class="list-head">
+        <h1>整理済みノート</h1>
+      </div>
+      <p class="muted small">ChatGPTなどで整理した文章を、ここに自分で貼り付けて保存します。</p>
+      <button id="btn-new-note" class="btn primary big" type="button">＋ 新しいノート</button>
+      <ul id="note-list" class="note-list"></ul>
+      <p id="note-empty" class="empty" hidden>まだノートがありません。</p>
+    </section>
+  </main>
+
+  <nav class="tabbar" aria-label="画面切り替え">
+    <button class="tab" data-tab="write" type="button" aria-current="page">メモする</button>
+    <button class="tab" data-tab="list" type="button">メモ一覧</button>
+    <button class="tab" data-tab="notes" type="button">整理済み</button>
+  </nav>
+
+  <!-- メモの編集 -->
+  <div id="panel-memo-edit" class="panel" role="dialog" aria-modal="true" aria-labelledby="memo-edit-title" hidden>
+    <div class="panel-head">
+      <button class="btn small" type="button" data-close>キャンセル</button>
+      <h2 id="memo-edit-title">メモを編集</h2>
+      <button id="btn-memo-edit-save" class="btn small primary" type="button">保存</button>
+    </div>
+    <div class="panel-body fill">
+      <p id="memo-edit-meta" class="muted small"></p>
+      <textarea id="memo-edit-input" class="memo-input" aria-label="メモ本文" spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <!-- 書き出し -->
+  <div id="panel-export" class="panel" role="dialog" aria-modal="true" aria-labelledby="export-title" hidden>
+    <div class="panel-head">
+      <button class="btn small" type="button" data-close>閉じる</button>
+      <h2 id="export-title">書き出し</h2>
+      <span class="head-spacer"></span>
+    </div>
+    <div class="panel-body">
+      <div class="warn">
+        <p class="warn-title">⚠ 社外サービスへ共有して問題ない情報か確認してください</p>
+        <ul>
+          <li>顧客名・個人名・連絡先などの個人情報</li>
+          <li>社外秘・社内限定の情報、取引の金額や条件</li>
+          <li>パスワード・ID・URLなどのアクセス情報</li>
+        </ul>
+        <p class="small">このアプリは、どこにも自動で送信しません。コピーや保存したテキストを、どこへ渡すかはあなたが決めます。</p>
+        <label class="check">
+          <input id="export-confirm" type="checkbox">
+          <span>内容を確認しました</span>
+        </label>
+      </div>
+      <p class="muted small">プレビュー（ここで書き換えても元のメモは変わりません。伏せたい部分を消してから使えます）</p>
+      <textarea id="export-preview" class="export-preview" aria-label="書き出しプレビュー" spellcheck="false"></textarea>
+      <div class="btn-row">
+        <button id="btn-copy" class="btn primary" type="button" disabled>コピー</button>
+        <button id="btn-save-txt" class="btn" type="button" disabled>txtファイルで保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ノートの閲覧 -->
+  <div id="panel-note-view" class="panel" role="dialog" aria-modal="true" aria-labelledby="note-view-title" hidden>
+    <div class="panel-head">
+      <button class="btn small" type="button" data-close>戻る</button>
+      <h2>ノート</h2>
+      <button id="btn-note-edit" class="btn small primary" type="button">編集</button>
+    </div>
+    <div class="panel-body">
+      <h3 id="note-view-title" class="note-title"></h3>
+      <p id="note-view-meta" class="muted small"></p>
+      <div id="note-view-body" class="note-body"></div>
+      <div class="btn-row">
+        <button id="btn-note-copy" class="btn" type="button">本文をコピー</button>
+        <button id="btn-note-delete" class="btn danger" type="button">削除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ノートの作成・編集 -->
+  <div id="panel-note-edit" class="panel" role="dialog" aria-modal="true" aria-labelledby="note-edit-heading" hidden>
+    <div class="panel-head">
+      <button class="btn small" type="button" data-close>キャンセル</button>
+      <h2 id="note-edit-heading">ノート</h2>
+      <button id="btn-note-save" class="btn small primary" type="button">保存</button>
+    </div>
+    <div class="panel-body fill">
+      <input id="note-edit-title" class="title-input" type="text" placeholder="タイトル" aria-label="タイトル" autocomplete="off">
+      <textarea id="note-edit-body" class="memo-input" placeholder="本文（整理した文章を貼り付け）" aria-label="本文" spellcheck="false"></textarea>
+    </div>
+  </div>
+
+  <!-- バックアップ・復元 -->
+  <div id="panel-backup" class="panel" role="dialog" aria-modal="true" aria-labelledby="backup-title" hidden>
+    <div class="panel-head">
+      <button class="btn small" type="button" data-close>閉じる</button>
+      <h2 id="backup-title">バックアップ</h2>
+      <span class="head-spacer"></span>
+    </div>
+    <div class="panel-body">
+      <section class="box">
+        <h3>データの保存場所</h3>
+        <p class="small">メモとノートは、<strong>この端末のこのブラウザの中（IndexedDB）だけ</strong>に保存されています。サーバーやクラウドには送られていません。</p>
+        <p class="small">そのため、ブラウザのデータ削除・端末の故障や買い替え・アプリの削除などで<strong>消えることがあります</strong>。定期的にバックアップしてください。</p>
+        <p id="storage-info" class="muted small"></p>
+      </section>
+
+      <section class="box">
+        <h3>バックアップを書き出す</h3>
+        <div class="warn">
+          <p class="warn-title">⚠ バックアップファイルには業務情報が含まれます</p>
+          <p class="small">すべてのメモとノートが、そのまま読める形（暗号化なし）で入っています。会社のルールで認められた場所に保存し、社外の人と共有する場所には置かないでください。</p>
+        </div>
+        <p id="last-backup" class="muted small"></p>
+        <button id="btn-backup" class="btn primary" type="button">バックアップを書き出す</button>
+      </section>
+
+      <section class="box">
+        <h3>バックアップから復元する</h3>
+        <p class="small">バックアップファイルの内容を、今のデータに<strong>追加</strong>します。今あるメモやノートが消えたり、上書きされたりすることはありません。同じ内容のものは重複して追加しません。</p>
+        <input id="restore-file" type="file" accept=".json,application/json" hidden>
+        <button id="btn-restore" class="btn" type="button">バックアップファイルを選ぶ</button>
+      </section>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
