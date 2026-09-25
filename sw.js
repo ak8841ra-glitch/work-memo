@@ -8,7 +8,7 @@
  *
  * アプリを更新して公開し直すときは、CACHE_NAME の末尾の数字を1つ上げてください。
  */
-var CACHE_NAME = 'work-memo-v1';
+var CACHE_NAME = 'work-memo-v2';
 
 var APP_FILES = [
   './',
